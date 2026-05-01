@@ -460,6 +460,8 @@ GameObject:
   m_Component:
   - component: {fileID: 7654322921538287759}
   - component: {fileID: 4199045062478983173}
+  - component: {fileID: 7681589503013235053}
+  - component: {fileID: 7075867069324279112}
   m_Layer: 0
   m_Name: Container_Small
   m_TagString: Untagged
@@ -505,6 +507,40 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Container
   color: 0
   type: {fileID: 0}
+--- !u!65 &7681589503013235053
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7123758762745118936}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.08, y: 0.52, z: 0.9}
+  m_Center: {x: 0, y: 0.21, z: 0}
+--- !u!114 &7075867069324279112
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7123758762745118936}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a1f05f68339460328395bd9c8b52685, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ContainerClickHandler
+  lane: {fileID: 0}
 --- !u!1001 &3885100784157638178
 PrefabInstance:
   m_ObjectHideFlags: 0

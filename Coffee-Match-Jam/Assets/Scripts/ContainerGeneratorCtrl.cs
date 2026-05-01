@@ -1,12 +1,11 @@
 using System.Collections;
 using UnityEngine;
 
-// Sits on each Generator GameObject.
-// Periodically creates a container and pushes it into the target lane.
+// Sits on each Generator GameObject. Feeds containers into its LaneController.
 public class ContainerGeneratorCtrl : MonoBehaviour
 {
-    public LaneQueue targetLane;
-    public float checkInterval = 2f;
+    public LaneController targetLane;
+    public float checkInterval = 2.5f;
 
     private GameManager gm;
 
@@ -18,6 +17,9 @@ public class ContainerGeneratorCtrl : MonoBehaviour
 
     IEnumerator Loop()
     {
+        // Small initial delay so scene is fully set up
+        yield return new WaitForSeconds(1f);
+
         while (true)
         {
             yield return new WaitForSeconds(checkInterval);
@@ -28,8 +30,8 @@ public class ContainerGeneratorCtrl : MonoBehaviour
 
     void Spawn()
     {
-        PackageColor color       = gm.GetRandomColor();
-        var (prefab, typeSO)     = gm.GetRandomContainerSpec();
+        PackageColor color      = gm.GetRandomColor();
+        var (prefab, typeSO)    = gm.GetRandomContainerSpec();
         if (prefab == null) return;
 
         var go        = Instantiate(prefab, transform.position, Quaternion.identity);

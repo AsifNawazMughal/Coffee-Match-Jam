@@ -280,6 +280,8 @@ GameObject:
   m_Component:
   - component: {fileID: 4073526820006135186}
   - component: {fileID: 5088443126899909623}
+  - component: {fileID: 3457089990037375453}
+  - component: {fileID: 2008472315790115127}
   m_Layer: 0
   m_Name: Container_Large
   m_TagString: Untagged
@@ -327,6 +329,40 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Container
   color: 0
   type: {fileID: 0}
+--- !u!65 &3457089990037375453
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5557837888256135307}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.08, y: 0.52, z: 1.22}
+  m_Center: {x: 0, y: 0.21, z: 0}
+--- !u!114 &2008472315790115127
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5557837888256135307}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a1f05f68339460328395bd9c8b52685, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ContainerClickHandler
+  lane: {fileID: 0}
 --- !u!1 &5980207649017612582
 GameObject:
   m_ObjectHideFlags: 0

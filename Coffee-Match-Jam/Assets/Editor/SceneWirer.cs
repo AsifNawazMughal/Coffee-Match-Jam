@@ -1,12 +1,10 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-/// <summary>
 /// Coffee Match > 3. Wire Scene
-/// Adds scripts to prefabs and wires all scene references automatically.
-/// Run after both "1. Build All Assets" and "2. Build Scene".
-/// </summary>
+/// Wires all scene references. Stop positions are created as real scene GameObjects — drag them freely.
 public static class SceneWirer
 {
     const string PfbPath = "Assets/Prefabs";
@@ -15,176 +13,181 @@ public static class SceneWirer
     [MenuItem("Coffee Match/3. Wire Scene")]
     public static void WireScene()
     {
-        WirePrefabs();
-        WireSceneGameObjects();
-        EditorSceneManager.MarkAllScenesDirty();
-        EditorSceneManager.SaveOpenScenes();
-        AssetDatabase.SaveAssets();
-        Debug.Log("Wiring complete! Press Play to test.");
-    }
+        var lanesParent = GameObject.Find("--- Lanes ---");
+        var slotsParent = GameObject.Find("--- SlotsRow ---");
+        var stripParent = GameObject.Find("--- PlayerStrip ---");
+        var gmParent    = GameObject.Find("--- GameManager ---");
 
-    // ── Step 1: Add scripts to prefabs ────────────────────────────────────
-
-    static void WirePrefabs()
-    {
-        AddToPrefab<Container>("Container_Small");
-        AddToPrefab<Container>("Container_Large");
-        AddToPrefab<PlayerAgent>("Player");
-    }
-
-    static void AddToPrefab<T>(string prefabName) where T : Component
-    {
-        string path = $"{PfbPath}/{prefabName}.prefab";
-        using var scope = new PrefabUtility.EditPrefabContentsScope(path);
-        var root = scope.prefabContentsRoot;
-        if (root == null) { Debug.LogWarning($"Prefab not found: {path}"); return; }
-        if (root.GetComponent<T>() == null) root.AddComponent<T>();
-    }
-
-    // ── Step 2: Wire scene GameObjects ────────────────────────────────────
-
-    static void WireSceneGameObjects()
-    {
-        var lanesParent  = GameObject.Find("--- Lanes ---");
-        var stripParent  = GameObject.Find("--- PlayerStrip ---");
-        var gmParent     = GameObject.Find("--- GameManager ---");
-
-        if (lanesParent == null || stripParent == null || gmParent == null)
+        if (lanesParent == null || slotsParent == null || stripParent == null || gmParent == null)
         {
             Debug.LogError("Scene objects missing. Run 'Coffee Match > 2. Build Scene' first.");
             return;
         }
 
-        // Wire lanes and generators
-        int laneCount = lanesParent.transform.childCount;
-        var laneQueues    = new LaneQueue[laneCount];
-        var genCtrls      = new ContainerGeneratorCtrl[laneCount];
+        // Wire GameManager first so we can read its settings (playerQueueSize, slotRowSize)
+        var gm = WireGameManagerBase(gmParent);
 
-        for (int i = 0; i < laneCount; i++)
-        {
-            var laneGO = lanesParent.transform.GetChild(i).gameObject;
-            laneQueues[i] = WireLane(laneGO);
-            genCtrls[i]   = WireGenerator(laneGO, laneQueues[i]);
-        }
+        var (laneControllers, genCtrls) = WireLanes(lanesParent);
+        var slotRow                     = WireSlotRow(slotsParent);
+        var playerQueue                 = WirePlayerQueue(stripParent, gm.playerQueueSize);
 
-        // Wire player strip
-        var stripCtrl = WireStrip(stripParent);
+        // Now fill in the remaining GameManager references
+        gm.lanes                = laneControllers;
+        gm.generators           = genCtrls;
+        gm.slotRow              = slotRow;
+        gm.playerQueue          = playerQueue;
+        EditorUtility.SetDirty(gmParent);
 
-        // Create player exit point if missing
-        var exitPoint = EnsureExitPoint();
+        WireClickManager();
 
-        // Wire GameManager
-        WireGameManager(gmParent, laneQueues, genCtrls, stripCtrl, exitPoint);
+        EditorSceneManager.MarkAllScenesDirty();
+        EditorSceneManager.SaveOpenScenes();
+        AssetDatabase.SaveAssets();
+        Debug.Log($"Wiring done! Queue size: {gm.playerQueueSize}  |  Press Play to test.");
     }
 
-    // ── Lane wiring ────────────────────────────────────────────────────────
+    // ── GameManager (base pass — loads assets, reads settings) ─────────────
 
-    static LaneQueue WireLane(GameObject laneGO)
-    {
-        var laneQueue = laneGO.GetComponent<LaneQueue>();
-        if (laneQueue == null) laneQueue = laneGO.AddComponent<LaneQueue>();
-
-        // Find the LaneTrack child
-        var track = laneGO.transform.Find("Track");
-        if (track == null)
-        {
-            // Track might be named "LaneTrack" if prefab was not renamed
-            foreach (Transform child in laneGO.transform)
-                if (child.name.StartsWith("Lane") || child.name == "Track") { track = child; break; }
-        }
-
-        if (track == null) { Debug.LogWarning($"No Track child on {laneGO.name}"); return laneQueue; }
-
-        // Slot positions
-        laneQueue.slotPositions = new Transform[5];
-        for (int s = 0; s < 5; s++)
-        {
-            var slot = track.Find($"ContainerSlot_{s}");
-            if (slot != null) laneQueue.slotPositions[s] = slot;
-            else Debug.LogWarning($"ContainerSlot_{s} not found in {track.name}");
-        }
-
-        // Spawn point
-        laneQueue.spawnPoint = track.Find("SpawnPoint");
-        laneQueue.moveSpeed  = 3f;
-
-        return laneQueue;
-    }
-
-    // ── Generator wiring ───────────────────────────────────────────────────
-
-    static ContainerGeneratorCtrl WireGenerator(GameObject laneGO, LaneQueue lane)
-    {
-        var genGO = laneGO.transform.Find("Generator")?.gameObject;
-        if (genGO == null)
-        {
-            Debug.LogWarning($"No Generator child on {laneGO.name}");
-            return null;
-        }
-
-        var ctrl = genGO.GetComponent<ContainerGeneratorCtrl>();
-        if (ctrl == null) ctrl = genGO.AddComponent<ContainerGeneratorCtrl>();
-        ctrl.targetLane    = lane;
-        ctrl.checkInterval = 2f;
-        return ctrl;
-    }
-
-    // ── Player strip wiring ────────────────────────────────────────────────
-
-    static PlayerStripCtrl WireStrip(GameObject stripParent)
-    {
-        var ctrl = stripParent.GetComponent<PlayerStripCtrl>();
-        if (ctrl == null) ctrl = stripParent.AddComponent<PlayerStripCtrl>();
-
-        ctrl.playerPrefab    = AssetDatabase.LoadAssetAtPath<GameObject>($"{PfbPath}/Player.prefab");
-        ctrl.stripSpawnPoint = stripParent.transform.Find("PlayerSpawnPoint");
-
-        return ctrl;
-    }
-
-    // ── Exit point ─────────────────────────────────────────────────────────
-
-    static Transform EnsureExitPoint()
-    {
-        var existing = GameObject.Find("PlayerExitPoint");
-        if (existing != null) return existing.transform;
-
-        var go = new GameObject("PlayerExitPoint");
-        go.transform.position = new Vector3(-8f, 0f, 9.5f);
-        return go.transform;
-    }
-
-    // ── GameManager wiring ─────────────────────────────────────────────────
-
-    static void WireGameManager(
-        GameObject        gmGO,
-        LaneQueue[]       lanes,
-        ContainerGeneratorCtrl[] generators,
-        PlayerStripCtrl   strip,
-        Transform         exitPoint)
+    static GameManager WireGameManagerBase(GameObject gmGO)
     {
         var gm = gmGO.GetComponent<GameManager>();
         if (gm == null) gm = gmGO.AddComponent<GameManager>();
 
-        gm.lanes               = lanes;
-        gm.generators          = generators;
-        gm.playerStrip         = strip;
         gm.containerSmallPrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{PfbPath}/Container_Small.prefab");
         gm.containerLargePrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{PfbPath}/Container_Large.prefab");
-        gm.containerTypeSmall  = AssetDatabase.LoadAssetAtPath<ContainerTypeSO>($"{SOPath}/ContainerType_Small.asset");
-        gm.containerTypeLarge  = AssetDatabase.LoadAssetAtPath<ContainerTypeSO>($"{SOPath}/ContainerType_Large.asset");
-
-        gm.colorDefinitions = new ColorDefinitionSO[]
+        gm.containerTypeSmall   = AssetDatabase.LoadAssetAtPath<ContainerTypeSO>($"{SOPath}/ContainerType_Small.asset");
+        gm.containerTypeLarge   = AssetDatabase.LoadAssetAtPath<ContainerTypeSO>($"{SOPath}/ContainerType_Large.asset");
+        gm.colorDefinitions     = new[]
         {
             AssetDatabase.LoadAssetAtPath<ColorDefinitionSO>($"{SOPath}/ColorDef_Red.asset"),
             AssetDatabase.LoadAssetAtPath<ColorDefinitionSO>($"{SOPath}/ColorDef_Blue.asset"),
             AssetDatabase.LoadAssetAtPath<ColorDefinitionSO>($"{SOPath}/ColorDef_Yellow.asset"),
         };
+        return gm;
+    }
 
-        // Also wire exit point on strip
-        if (strip != null) strip.playerExitPoint = exitPoint;
+    // ── Lanes ──────────────────────────────────────────────────────────────
 
-        EditorUtility.SetDirty(gm);
-        EditorUtility.SetDirty(strip);
+    static (LaneController[], ContainerGeneratorCtrl[]) WireLanes(GameObject lanesParent)
+    {
+        int count = lanesParent.transform.childCount;
+        var lanes = new LaneController[count];
+        var gens  = new ContainerGeneratorCtrl[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            var laneGO = lanesParent.transform.GetChild(i).gameObject;
+
+            var ctrl = laneGO.GetComponent<LaneController>();
+            if (ctrl == null) ctrl = laneGO.AddComponent<LaneController>();
+            ctrl.moveSpeed = 3f;
+
+            Transform track = laneGO.transform.Find("Track");
+            if (track == null)
+                foreach (Transform c in laneGO.transform)
+                    if (c.name.StartsWith("Track") || c.name == "LaneTrack") { track = c; break; }
+
+            if (track != null)
+            {
+                ctrl.slotPositions = new Transform[5];
+                for (int s = 0; s < 5; s++)
+                    ctrl.slotPositions[s] = track.Find($"ContainerSlot_{s}");
+                ctrl.spawnPoint = track.Find("SpawnPoint");
+            }
+
+            lanes[i] = ctrl;
+
+            var genGO = laneGO.transform.Find("Generator")?.gameObject;
+            if (genGO != null)
+            {
+                var gen = genGO.GetComponent<ContainerGeneratorCtrl>();
+                if (gen == null) gen = genGO.AddComponent<ContainerGeneratorCtrl>();
+                gen.targetLane    = ctrl;
+                gen.checkInterval = 2.5f;
+                gens[i] = gen;
+            }
+
+            EditorUtility.SetDirty(laneGO);
+        }
+
+        return (lanes, gens);
+    }
+
+    // ── Slot Row ───────────────────────────────────────────────────────────
+
+    static SlotRowManager WireSlotRow(GameObject slotsParent)
+    {
+        var mgr = slotsParent.GetComponent<SlotRowManager>();
+        if (mgr == null) mgr = slotsParent.AddComponent<SlotRowManager>();
+
+        int count = slotsParent.transform.childCount;
+        mgr.slots = new ContainerSlot[count];
+        for (int i = 0; i < count; i++)
+        {
+            var slotGO = slotsParent.transform.GetChild(i).gameObject;
+            var slot   = slotGO.GetComponent<ContainerSlot>();
+            if (slot == null) slot = slotGO.AddComponent<ContainerSlot>();
+            mgr.slots[i] = slot;
+        }
+
+        EditorUtility.SetDirty(slotsParent);
+        return mgr;
+    }
+
+    // ── Player Queue ───────────────────────────────────────────────────────
+    // Creates stop positions as real scene GameObjects so you can drag them.
+
+    static PlayerQueue WirePlayerQueue(GameObject stripParent, int queueSize)
+    {
+        // Remove previously generated stop positions
+        var old = new List<GameObject>();
+        foreach (Transform c in stripParent.transform)
+            if (c.name.StartsWith("StopPos_")) old.Add(c.gameObject);
+        foreach (var go in old) Object.DestroyImmediate(go);
+
+        // Spread stop positions evenly across the strip
+        const float startX  = -5f;
+        const float endX    =  5f;
+        const float stripZ  =  9.5f;
+        float spacing = queueSize > 1 ? (endX - startX) / (queueSize - 1) : 0f;
+
+        var stops = new Transform[queueSize];
+        for (int i = 0; i < queueSize; i++)
+        {
+            var go = new GameObject($"StopPos_{i}");
+            go.transform.SetParent(stripParent.transform);
+            go.transform.position = new Vector3(startX + i * spacing, 0f, stripZ);
+            stops[i] = go.transform;
+        }
+
+        var pq = stripParent.GetComponent<PlayerQueue>();
+        if (pq == null) pq = stripParent.AddComponent<PlayerQueue>();
+
+        pq.playerPrefab  = AssetDatabase.LoadAssetAtPath<GameObject>($"{PfbPath}/Player.prefab");
+        pq.spawnInterval = 1.5f;
+        pq.stopPositions = stops;
+
+        // Exit point — players walk here and vanish
+        var exit = GameObject.Find("PlayerExitPoint");
+        if (exit == null)
+        {
+            exit = new GameObject("PlayerExitPoint");
+            exit.transform.position = new Vector3(-9f, 0f, stripZ);
+        }
+        pq.exitPoint = exit.transform;
+
+        EditorUtility.SetDirty(stripParent);
+        return pq;
+    }
+
+    // ── Click Manager ──────────────────────────────────────────────────────
+
+    static void WireClickManager()
+    {
+        var cam = GameObject.Find("Main Camera");
+        if (cam == null) { Debug.LogWarning("Main Camera not found — ClickManager not added."); return; }
+        if (cam.GetComponent<ClickManager>() == null)
+            cam.AddComponent<ClickManager>();
+        EditorUtility.SetDirty(cam);
     }
 }

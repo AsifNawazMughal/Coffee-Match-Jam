@@ -127,13 +127,27 @@ public static class EnvironmentBuilder
     static void BuildContainerPrefab(string prefabName, int cols, int rows, float depth)
     {
         string path = $"{PfbPath}/{prefabName}.prefab";
-        if (Exists(path)) return;
+
+        // If prefab already exists, just patch missing components and return
+        if (Exists(path))
+        {
+            PatchContainerPrefab(path, depth);
+            return;
+        }
 
         const float w    = 1.08f;
         const float wall = 0.09f;
         const float h    = 0.42f;
 
         var root = new GameObject(prefabName);
+
+        // BoxCollider for click detection + Container/ContainerClickHandler scripts
+        var col = root.AddComponent<BoxCollider>();
+        col.size   = new Vector3(w, h + 0.1f, depth);
+        col.center = new Vector3(0f, h / 2f, 0f);
+        col.enabled = false; // enabled by LaneController only when at delivery slot
+        root.AddComponent<Container>();
+        root.AddComponent<ContainerClickHandler>();
 
         // Box walls (open top)
         Panel(root, "Bottom", new Vector3(0,     0,        0),         new Vector3(w,    wall, depth),  "Mat_Belt");
@@ -251,6 +265,42 @@ public static class EnvironmentBuilder
         Panel(root, "Inner", new Vector3(0, 0.05f, 0),  new Vector3(0.88f, 0.08f, 0.80f), "Mat_SlotInner");
 
         Save(root, path);
+    }
+
+    // ── Patch existing container prefabs (adds BoxCollider + scripts if missing) ──
+
+    [MenuItem("Coffee Match/Fix Container Prefabs (click not working)")]
+    public static void FixContainerPrefabs()
+    {
+        PatchContainerPrefab($"{PfbPath}/Container_Small.prefab", 0.90f);
+        PatchContainerPrefab($"{PfbPath}/Container_Large.prefab", 1.22f);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+        Debug.Log("Container prefabs patched — BoxCollider + scripts added.");
+    }
+
+    static void PatchContainerPrefab(string path, float depth)
+    {
+        if (!Exists(path)) return;
+        const float w = 1.08f;
+        const float h = 0.42f;
+
+        using var scope = new PrefabUtility.EditPrefabContentsScope(path);
+        var root = scope.prefabContentsRoot;
+
+        if (root.GetComponent<Container>() == null)
+            root.AddComponent<Container>();
+
+        if (root.GetComponent<ContainerClickHandler>() == null)
+            root.AddComponent<ContainerClickHandler>();
+
+        if (root.GetComponent<BoxCollider>() == null)
+        {
+            var col    = root.AddComponent<BoxCollider>();
+            col.size   = new Vector3(w, h + 0.1f, depth);
+            col.center = new Vector3(0f, h / 2f, 0f);
+            col.enabled = false;
+        }
     }
 
     // ── Low-level helpers ──────────────────────────────────────────────────

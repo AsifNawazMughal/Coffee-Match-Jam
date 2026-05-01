@@ -1,19 +1,21 @@
 using UnityEngine;
 
-// Central coordinator. Wired automatically by SceneWirer.
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
 
     [Header("Lanes & Generators")]
-    public LaneQueue[]              lanes;
+    public LaneController[]         lanes;
     public ContainerGeneratorCtrl[] generators;
 
-    [Header("Player Strip")]
-    public PlayerStripCtrl playerStrip;
+    [Header("Slot Row")]
+    public SlotRowManager slotRow;
+
+    [Header("Player Queue Strip")]
+    public PlayerQueue playerQueue;
 
     [Header("ScriptableObjects")]
-    public ColorDefinitionSO[]  colorDefinitions; // Red, Blue, Yellow
+    public ColorDefinitionSO[]  colorDefinitions;
     public ContainerTypeSO      containerTypeSmall;
     public ContainerTypeSO      containerTypeLarge;
 
@@ -21,28 +23,20 @@ public class GameManager : MonoBehaviour
     public GameObject containerSmallPrefab;
     public GameObject containerLargePrefab;
 
+    [Header("Game Settings")]
+    [Tooltip("How many stop positions exist in the player queue strip")]
+    public int playerQueueSize = 15;
+    [Tooltip("How many containers can sit in the holding slots row")]
+    public int slotRowSize = 7;
+
     private int score;
 
     void Awake() => Instance = this;
 
     void Start()
     {
-        foreach (var lane in lanes)
-            lane.OnDeliveryReady += OnDeliveryReady;
-
         foreach (var gen in generators)
             gen.Initialize(this);
-    }
-
-    // ── Events ─────────────────────────────────────────────────────────────
-
-    void OnDeliveryReady(Container container)
-    {
-        if (playerStrip == null) return;
-        var colorDef = GetColorDef(container.color);
-        if (colorDef == null) return;
-        // Number of players spawned = number of cups in this container
-        playerStrip.SpawnPlayersFor(container, colorDef);
     }
 
     public void OnPlayerServed()
@@ -50,8 +44,6 @@ public class GameManager : MonoBehaviour
         score++;
         Debug.Log($"Score: {score}");
     }
-
-    // ── Queries ─────────────────────────────────────────────────────────────
 
     public ColorDefinitionSO GetColorDef(PackageColor color)
     {
@@ -62,11 +54,9 @@ public class GameManager : MonoBehaviour
 
     public PackageColor GetRandomColor()
     {
-        int i = Random.Range(0, colorDefinitions.Length);
-        return colorDefinitions[i].colorType;
+        return colorDefinitions[Random.Range(0, colorDefinitions.Length)].colorType;
     }
 
-    // Returns a random container prefab + matching type SO
     public (GameObject prefab, ContainerTypeSO type) GetRandomContainerSpec()
     {
         bool small = Random.value < 0.5f;
