@@ -1,79 +1,144 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using DG.Tweening;
 
-// Manages the queue of containers on one lane.
-// Slot 0 = delivery (bottom/front, closest to camera & slots row).
-// Slot 4 = near generator (top/back).
+// Manages a stack of boxes on one lane.
+// Slot 0 = front (closest to slots row); last slot = near the generator.
+// Only the front (top) box is interactable.
 public class LaneController : MonoBehaviour
 {
-    [Header("Slot transforms: 0=delivery, 4=near generator")]
+    [Header("Slot transforms: 0=front, last=near generator")]
     public Transform[] slotPositions = new Transform[5];
     public Transform spawnPoint;
-    public float moveSpeed = 3f;
 
-    private readonly List<Container> queue = new();
-    private bool deliveryClickable;
+    [Header("Animation tuning")]
+    public float arrivalDuration = 0.45f;
+    public float arrivalGap      = 0.18f;
+    public float shiftDuration   = 0.30f;
 
-    public bool CanAcceptNew     => queue.Count < slotPositions.Length;
-    public bool HasDelivery      => queue.Count > 0;
+    private readonly List<Container> stack = new();
+    private bool busy;
+    private GameManager gm;
 
-    void Update()
+    public int  BoxCount => stack.Count;
+    public bool HasBoxes => stack.Count > 0;
+
+    public void Initialize(GameManager manager, int boxCount)
     {
-        // Remove any containers destroyed externally
-        queue.RemoveAll(c => c == null);
-
-        // Slide each container toward its target slot
-        for (int i = 0; i < queue.Count && i < slotPositions.Length; i++)
-            queue[i].transform.position = Vector3.MoveTowards(
-                queue[i].transform.position,
-                slotPositions[i].position,
-                moveSpeed * Time.deltaTime);
-
-        // Enable click once front container arrives at delivery slot
-        if (queue.Count > 0 && !deliveryClickable)
-        {
-            float dist = Vector3.Distance(queue[0].transform.position, slotPositions[0].position);
-            if (dist < 0.08f)
-            {
-                deliveryClickable = true;
-                SetClickable(queue[0], true);
-            }
-        }
+        gm = manager;
+        StartCoroutine(SpawnAndArrange(boxCount));
     }
 
-    public void Enqueue(Container c)
+    IEnumerator SpawnAndArrange(int boxCount)
     {
-        if (!CanAcceptNew) return;
-        queue.Add(c);
-        c.transform.SetParent(transform);
-        c.transform.position = spawnPoint != null
+        for (int i = 0; i < boxCount; i++)
+        {
+            var box = SpawnBox();
+            if (box != null) stack.Add(box);
+        }
+
+        int slotCount = slotPositions.Length;
+        int visible   = Mathf.Min(stack.Count, slotCount);
+
+        // Animate visible boxes one-by-one from spawn point to their slot.
+        for (int i = 0; i < visible; i++)
+        {
+            var b = stack[i];
+            if (b == null) continue;
+            b.transform.position = spawnPoint != null ? spawnPoint.position : slotPositions[slotCount - 1].position;
+            b.transform.DOMove(slotPositions[i].position, arrivalDuration).SetEase(Ease.OutQuad);
+            yield return new WaitForSeconds(arrivalGap);
+        }
+
+        yield return new WaitForSeconds(arrivalDuration);
+        OpenTopAndEnableClick();
+    }
+
+    Container SpawnBox()
+    {
+        if (gm == null) return null;
+        var (prefab, typeSO) = gm.GetRandomContainerSpec();
+        if (prefab == null) return null;
+
+        Vector3 pos = spawnPoint != null
             ? spawnPoint.position
             : slotPositions[slotPositions.Length - 1].position;
+
+        var go  = Instantiate(prefab, pos, Quaternion.identity, transform);
+        var box = go.GetComponent<Container>();
+        if (box == null) { Destroy(go); return null; }
+
+        PackageColor color = gm.GetRandomColor();
+        var def = gm.GetColorDef(color);
+        box.Init(color, typeSO, def != null ? def.material : null);
+
+        var col = box.GetComponent<Collider>();
+        if (col != null) col.enabled = false;
+        return box;
     }
 
-    // Called when user clicks the front container
-    public void OnFrontContainerClicked()
+    void OpenTopAndEnableClick()
     {
-        if (queue.Count == 0 || !deliveryClickable) return;
+        if (stack.Count == 0) return;
+        var top = stack[0];
+        if (top == null) return;
 
-        var slotRow = GameManager.Instance?.slotRow;
+        top.Open();
+
+        var handler = top.GetComponent<ContainerClickHandler>();
+        if (handler != null) handler.lane = this;
+        var col = top.GetComponent<Collider>();
+        if (col != null) col.enabled = true;
+    }
+
+    // Called by ClickManager via ContainerClickHandler.
+    public void OnTopBoxClicked()
+    {
+        if (busy || stack.Count == 0) return;
+
+        var slotRow = gm != null ? gm.slotRow : null;
         if (slotRow == null || !slotRow.HasEmptySlot) return;
 
-        Container front = queue[0];
-        SetClickable(front, false);
-        front.transform.SetParent(null);
-        queue.RemoveAt(0);
-        deliveryClickable = false;
+        busy = true;
+        var top = stack[0];
+        stack.RemoveAt(0);
 
-        slotRow.AcceptContainer(front);
+        var handler = top.GetComponent<ContainerClickHandler>();
+        if (handler != null) handler.lane = null;
+        var col = top.GetComponent<Collider>();
+        if (col != null) col.enabled = false;
+
+        top.transform.SetParent(null);
+        slotRow.AcceptContainer(top);
+
+        ShiftBoxesForward();
     }
 
-    void SetClickable(Container c, bool on)
+    void ShiftBoxesForward()
     {
-        var handler = c.GetComponent<ContainerClickHandler>();
-        if (handler != null) handler.lane = on ? this : null;
+        int slotCount = slotPositions.Length;
+        if (stack.Count == 0)
+        {
+            busy = false;
+            return;
+        }
 
-        var col = c.GetComponent<Collider>();
-        if (col != null) col.enabled = on;
+        var seq = DOTween.Sequence();
+        for (int i = 0; i < stack.Count; i++)
+        {
+            var b = stack[i];
+            if (b == null) continue;
+
+            Vector3 target = i < slotCount
+                ? slotPositions[i].position
+                : (spawnPoint != null ? spawnPoint.position : slotPositions[slotCount - 1].position);
+            seq.Join(b.transform.DOMove(target, shiftDuration).SetEase(Ease.OutQuad));
+        }
+        seq.OnComplete(() =>
+        {
+            busy = false;
+            OpenTopAndEnableClick();
+        });
     }
 }

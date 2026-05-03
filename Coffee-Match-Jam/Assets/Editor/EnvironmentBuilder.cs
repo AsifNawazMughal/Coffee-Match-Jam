@@ -23,7 +23,6 @@ public static class EnvironmentBuilder
         BuildCupPrefab();
         BuildContainerPrefab("Container_Small", cols: 2, rows: 2, depth: 0.90f);
         BuildContainerPrefab("Container_Large", cols: 2, rows: 3, depth: 1.22f);
-        BuildPlayerPrefab();
         BuildGeneratorPrefab();
         BuildLaneTrackPrefab();
         BuildSlotPrefab();
@@ -122,18 +121,15 @@ public static class EnvironmentBuilder
     }
 
     // ── Container Prefabs ──────────────────────────────────────────────────
-    // Open-top colored box with cups arranged in a grid inside
+    // Closed cube box with a Lid on top + capsule "cans" inside.
+    // The Lid is animated away by Container.Open() so the cans become visible.
 
     static void BuildContainerPrefab(string prefabName, int cols, int rows, float depth)
     {
         string path = $"{PfbPath}/{prefabName}.prefab";
 
-        // If prefab already exists, just patch missing components and return
-        if (Exists(path))
-        {
-            PatchContainerPrefab(path, depth);
-            return;
-        }
+        // Always rebuild so layout changes propagate.
+        if (Exists(path)) AssetDatabase.DeleteAsset(path);
 
         const float w    = 1.08f;
         const float wall = 0.09f;
@@ -141,58 +137,43 @@ public static class EnvironmentBuilder
 
         var root = new GameObject(prefabName);
 
-        // BoxCollider for click detection + Container/ContainerClickHandler scripts
+        // Click detection covers the whole cube including the lid.
         var col = root.AddComponent<BoxCollider>();
-        col.size   = new Vector3(w, h + 0.1f, depth);
-        col.center = new Vector3(0f, h / 2f, 0f);
-        col.enabled = false; // enabled by LaneController only when at delivery slot
+        col.size   = new Vector3(w, h + wall, depth);
+        col.center = new Vector3(0f, (h + wall) / 2f, 0f);
+        col.enabled = false; // LaneController enables only on the top box.
         root.AddComponent<Container>();
         root.AddComponent<ContainerClickHandler>();
 
-        // Box walls (open top)
+        // Open-top body: 4 walls + bottom.
         Panel(root, "Bottom", new Vector3(0,     0,        0),         new Vector3(w,    wall, depth),  "Mat_Belt");
         Panel(root, "WallL",  new Vector3(-w/2,  h/2,      0),         new Vector3(wall, h,    depth),  "Mat_Belt");
         Panel(root, "WallR",  new Vector3( w/2,  h/2,      0),         new Vector3(wall, h,    depth),  "Mat_Belt");
         Panel(root, "WallB",  new Vector3(0,     h/2,     -depth/2),   new Vector3(w,    h,    wall),   "Mat_Belt");
         Panel(root, "WallF",  new Vector3(0,     h/2,      depth/2),   new Vector3(w,    h,    wall),   "Mat_Belt");
 
-        // Cups inside — evenly spaced in a cols×rows grid
-        float spX   = 0.27f;
-        float spZ   = depth / (rows + 1);
-        float cupY  = h * 0.35f + 0.08f;
-        float offX  = -(cols - 1) * spX / 2f;
-        float offZ  = -(rows - 1) * spZ / 2f;
+        // Lid covering the top — opened with DOTween at runtime.
+        Panel(root, "Lid",    new Vector3(0,     h + wall/2f, 0),      new Vector3(w,    wall, depth),  "Mat_Belt");
 
-        var cupPfb = AssetDatabase.LoadAssetAtPath<GameObject>($"{PfbPath}/Cup.prefab");
+        // Capsule cans inside, evenly spaced in a cols×rows grid.
+        float spX  = 0.27f;
+        float spZ  = depth / (rows + 1);
+        float canY = wall + 0.18f;
+        float offX = -(cols - 1) * spX / 2f;
+        float offZ = -(rows - 1) * spZ / 2f;
+
         for (int r = 0; r < rows; r++)
         {
             for (int c = 0; c < cols; c++)
             {
-                var cup = cupPfb != null
-                    ? (GameObject)PrefabUtility.InstantiatePrefab(cupPfb)
-                    : Prim(PrimitiveType.Cylinder, $"Cup_{r}_{c}", root, Vector3.zero, new Vector3(0.17f, 0.09f, 0.17f), M("Mat_White"));
-
-                cup.name = $"Cup_{r}_{c}";
-                cup.transform.SetParent(root.transform);
-                cup.transform.localPosition = new Vector3(offX + c * spX, cupY, offZ + r * spZ);
+                Prim(PrimitiveType.Capsule,
+                     $"Can_{r}_{c}",
+                     root,
+                     new Vector3(offX + c * spX, canY, offZ + r * spZ),
+                     new Vector3(0.18f, 0.12f, 0.18f),
+                     M("Mat_White"));
             }
         }
-
-        Save(root, path);
-    }
-
-    // ── Player Prefab ──────────────────────────────────────────────────────
-    // Lollipop character: body capsule + sphere head (color tinted at runtime)
-
-    static void BuildPlayerPrefab()
-    {
-        string path = $"{PfbPath}/Player.prefab";
-        if (Exists(path)) return;
-
-        var root = new GameObject("Player");
-
-        Prim(PrimitiveType.Capsule, "Body", root, new Vector3(0, 0.42f, 0), new Vector3(0.28f, 0.28f, 0.28f), M("Mat_Red"));
-        Prim(PrimitiveType.Sphere,  "Head", root, new Vector3(0, 0.98f, 0), new Vector3(0.30f, 0.30f, 0.30f), M("Mat_White"));
 
         Save(root, path);
     }
@@ -265,42 +246,6 @@ public static class EnvironmentBuilder
         Panel(root, "Inner", new Vector3(0, 0.05f, 0),  new Vector3(0.88f, 0.08f, 0.80f), "Mat_SlotInner");
 
         Save(root, path);
-    }
-
-    // ── Patch existing container prefabs (adds BoxCollider + scripts if missing) ──
-
-    [MenuItem("Coffee Match/Fix Container Prefabs (click not working)")]
-    public static void FixContainerPrefabs()
-    {
-        PatchContainerPrefab($"{PfbPath}/Container_Small.prefab", 0.90f);
-        PatchContainerPrefab($"{PfbPath}/Container_Large.prefab", 1.22f);
-        AssetDatabase.SaveAssets();
-        AssetDatabase.Refresh();
-        Debug.Log("Container prefabs patched — BoxCollider + scripts added.");
-    }
-
-    static void PatchContainerPrefab(string path, float depth)
-    {
-        if (!Exists(path)) return;
-        const float w = 1.08f;
-        const float h = 0.42f;
-
-        using var scope = new PrefabUtility.EditPrefabContentsScope(path);
-        var root = scope.prefabContentsRoot;
-
-        if (root.GetComponent<Container>() == null)
-            root.AddComponent<Container>();
-
-        if (root.GetComponent<ContainerClickHandler>() == null)
-            root.AddComponent<ContainerClickHandler>();
-
-        if (root.GetComponent<BoxCollider>() == null)
-        {
-            var col    = root.AddComponent<BoxCollider>();
-            col.size   = new Vector3(w, h + 0.1f, depth);
-            col.center = new Vector3(0f, h / 2f, 0f);
-            col.enabled = false;
-        }
     }
 
     // ── Low-level helpers ──────────────────────────────────────────────────

@@ -24,6 +24,6 @@ public class ClickManager : MonoBehaviour
 
         var handler = hit.collider.GetComponentInParent<ContainerClickHandler>();
         if (handler != null && handler.lane != null)
-            handler.lane.OnFrontContainerClicked();
+            handler.lane.OnTopBoxClicked();
     }
 }

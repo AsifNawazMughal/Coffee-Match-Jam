@@ -15,7 +15,6 @@ public static class SceneCreator
     // World-space Z positions (larger Z = further from camera = higher on screen)
     const float Z_Water        = 15.0f;
     const float Z_Sand         = 11.5f;
-    const float Z_PlayerStrip  =  9.5f;
     const float Z_SlotsRow     =  8.0f;
     const float Z_Generator    =  7.0f;   // top of each lane
     const float Z_LaneBottom   =  1.0f;   // delivery end (close to camera)
@@ -40,7 +39,6 @@ public static class SceneCreator
         PlaceLighting();
         PlaceCamera();
         PlaceBackground();
-        PlacePlayerStrip();
         PlaceSlotsRow();
         PlaceLanes();
         PlaceGameManager();
@@ -97,27 +95,6 @@ public static class SceneCreator
         Plane(bg, "Water",  new Vector3(0, -0.12f, Z_Water),       new Vector3(8, 1, 5),   "Mat_Water");
         Plane(bg, "Sand",   new Vector3(0, -0.08f, Z_Sand),        new Vector3(8, 1, 2),   "Mat_Sand");
         Plane(bg, "Floor",  new Vector3(0, -0.06f, 4.5f),          new Vector3(3.5f,1,3.5f),"Mat_Ground");
-    }
-
-    // ── Player Strip ───────────────────────────────────────────────────────
-    // Horizontal platform where colored players queue up
-
-    static void PlacePlayerStrip()
-    {
-        var parent = new GameObject("--- PlayerStrip ---");
-
-        // Raised platform
-        Cube(parent, "Platform",
-             new Vector3(0, -0.02f, Z_PlayerStrip),
-             new Vector3(10f, 0.08f, 2.2f),
-             "Mat_Sand");
-
-        // Spawn point: players appear on the right and walk left into the queue
-        Marker(parent, "PlayerSpawnPoint",  new Vector3(7f, 0.1f, Z_PlayerStrip));
-
-        // One queue front marker per lane color (where front-of-line stands)
-        for (int i = 0; i < 3; i++)
-            Marker(parent, $"QueueFront_{Colors[i]}", new Vector3(LaneX[i], 0.1f, Z_PlayerStrip - 0.4f));
     }
 
     // ── Slots Row ──────────────────────────────────────────────────────────
