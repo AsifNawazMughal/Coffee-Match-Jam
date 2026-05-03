@@ -57,7 +57,7 @@ public class SlotRowManager : MonoBehaviour
     public ContainerSlot FindMatchingSlot(PackageColor color)
     {
         foreach (var slot in slots)
-            if (!slot.IsEmpty && slot.heldContainer.color == color)
+            if (!slot.IsEmpty && !slot.isReserved && slot.heldContainer.color == color)
                 return slot;
         return null;
     }

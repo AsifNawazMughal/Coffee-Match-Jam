@@ -16,6 +16,7 @@ public class PlayerAgent : MonoBehaviour
 
     public void MoveToStop(Transform newStop)
     {
+        StopAllCoroutines();
         StartCoroutine(WalkTo(newStop.position));
     }
 
@@ -35,8 +36,8 @@ public class PlayerAgent : MonoBehaviour
             if (cup != null)
                 yield return FlyToPlayer(cup);
 
-            // Destroy empty container shell; slot cleared by onComplete below
-            if (container.IsEmpty)
+            // Re-check after yield — container might have been destroyed externally
+            if (container != null && container.IsEmpty)
                 Destroy(container.gameObject);
         }
 
@@ -52,6 +53,9 @@ public class PlayerAgent : MonoBehaviour
     // Cup arcs through the air from the container slot to the player
     IEnumerator FlyToPlayer(Transform cup)
     {
+        // Normalise scale immediately so it looks consistent throughout the flight
+        cup.localScale = Vector3.one * 0.75f;
+
         Vector3 start  = cup.position;
         Vector3 target = transform.position + Vector3.up * 0.6f;
         float t = 0f;

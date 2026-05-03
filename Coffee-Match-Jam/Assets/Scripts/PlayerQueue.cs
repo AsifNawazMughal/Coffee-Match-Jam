@@ -49,11 +49,13 @@ public class PlayerQueue : MonoBehaviour
             var slot = GameManager.Instance?.slotRow?.FindMatchingSlot(queue[i].color);
             if (slot != null)
             {
+                slot.Reserve();
                 var player = queue[i];
                 queue[i] = null;
 
                 player.PickupFromSlot(slot, exitPoint, () =>
                 {
+                    slot.Unreserve();
                     // Clear the slot only once the container is fully empty
                     if (slot.heldContainer == null || slot.heldContainer.IsEmpty)
                         GameManager.Instance?.slotRow?.ClearSlot(slot);

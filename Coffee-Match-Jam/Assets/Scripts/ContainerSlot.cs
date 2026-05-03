@@ -4,7 +4,11 @@ using UnityEngine;
 public class ContainerSlot : MonoBehaviour
 {
     public Container heldContainer { get; private set; }
+    public bool isReserved { get; private set; }
     public bool IsEmpty => heldContainer == null;
+
+    public void Reserve()   => isReserved = true;
+    public void Unreserve() => isReserved = false;
 
     public void Place(Container c)
     {
@@ -23,5 +27,6 @@ public class ContainerSlot : MonoBehaviour
     public void Clear()
     {
         heldContainer = null;
+        isReserved = false;
     }
 }

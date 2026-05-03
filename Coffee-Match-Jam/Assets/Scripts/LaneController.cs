@@ -19,6 +19,9 @@ public class LaneController : MonoBehaviour
 
     void Update()
     {
+        // Remove any containers destroyed externally
+        queue.RemoveAll(c => c == null);
+
         // Slide each container toward its target slot
         for (int i = 0; i < queue.Count && i < slotPositions.Length; i++)
             queue[i].transform.position = Vector3.MoveTowards(
