@@ -1,6 +1,7 @@
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.UI;
 
 /// Coffee Match > 3. Wire Scene
 /// Wires all scene references.
@@ -14,6 +15,7 @@ public static class SceneWirer
     {
         var lanesParent = GameObject.Find("--- Lanes ---");
         var slotsParent = GameObject.Find("--- SlotsRow ---");
+        var custParent  = GameObject.Find("--- Customer ---");
         var gmParent    = GameObject.Find("--- GameManager ---");
 
         if (lanesParent == null || slotsParent == null || gmParent == null)
@@ -22,20 +24,83 @@ public static class SceneWirer
             return;
         }
 
-        var gm                = WireGameManagerBase(gmParent);
-        var laneControllers   = WireLanes(lanesParent);
-        var slotRow           = WireSlotRow(slotsParent);
+        var gm              = WireGameManagerBase(gmParent);
+        var laneControllers = WireLanes(lanesParent);
+        var slotRow         = WireSlotRow(slotsParent);
+        var customerQueue   = custParent != null ? WireCustomerQueue(custParent) : null;
 
-        gm.lanes   = laneControllers;
-        gm.slotRow = slotRow;
+        gm.lanes         = laneControllers;
+        gm.slotRow       = slotRow;
+        gm.customerQueue = customerQueue;
         EditorUtility.SetDirty(gmParent);
 
         WireClickManager();
+        PatchCoinRewardAnimation();
+        PatchButtonHandlers();
 
         EditorSceneManager.MarkAllScenesDirty();
         EditorSceneManager.SaveOpenScenes();
         AssetDatabase.SaveAssets();
         Debug.Log($"Wiring done! Boxes per lane: {gm.BoxesPerLane}  |  Press Play to test.");
+    }
+
+    // Adds CoinRewardAnimation to an existing WinPanel and wires it to the
+    // UIController so users don't have to do this by hand after the feature
+    // was introduced.
+    // Wires each UI button's OnClick to the matching public UIController
+    // method as a persistent listener — so the binding is visible (and editable)
+    // in each Button's Inspector under the OnClick section.
+    static void PatchButtonHandlers()
+    {
+        var ui = Object.FindFirstObjectByType<UIController>();
+        if (ui == null) return;
+
+        UIBuilder.WireButton(ui.pauseButton,        ui, nameof(UIController.Pause));
+        UIBuilder.WireButton(ui.winNextButton,      ui, nameof(UIController.Next));
+        UIBuilder.WireButton(ui.loseRetryButton,    ui, nameof(UIController.Restart));
+        UIBuilder.WireButton(ui.pauseResumeButton,  ui, nameof(UIController.Resume));
+        UIBuilder.WireButton(ui.pauseRestartButton, ui, nameof(UIController.Restart));
+        UIBuilder.WireButton(ui.pauseHomeButton,    ui, nameof(UIController.Home));
+    }
+
+    static void PatchCoinRewardAnimation()
+    {
+        var ui = Object.FindFirstObjectByType<UIController>();
+        if (ui == null || ui.winPanel == null) return;
+
+        var anim = ui.winPanel.GetComponent<CoinRewardAnimation>();
+        if (anim == null) anim = ui.winPanel.AddComponent<CoinRewardAnimation>();
+
+        if (anim.coinSprite == null)
+            anim.coinSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/sprites/coin.png");
+
+        if (anim.targetAnchor == null && ui.coinLabel != null)
+            anim.targetAnchor = ui.coinLabel.rectTransform;
+
+        if (anim.pileAnchor == null)
+        {
+            var existing = ui.winPanel.transform.Find("CoinPileAnchor");
+            RectTransform pile;
+            if (existing == null)
+            {
+                var go = new GameObject("CoinPileAnchor", typeof(RectTransform));
+                go.transform.SetParent(ui.winPanel.transform, false);
+                pile = go.GetComponent<RectTransform>();
+                pile.anchorMin = pile.anchorMax = pile.pivot = new Vector2(0.5f, 0.5f);
+                pile.anchoredPosition = new Vector2(0f, 60f);
+                pile.sizeDelta = Vector2.zero;
+            }
+            else
+            {
+                pile = (RectTransform)existing;
+            }
+            anim.pileAnchor = pile;
+        }
+
+        ui.coinReward = anim;
+
+        EditorUtility.SetDirty(ui);
+        EditorUtility.SetDirty(anim);
     }
 
     static GameManager WireGameManagerBase(GameObject gmGO)
@@ -105,6 +170,20 @@ public static class SceneWirer
 
         EditorUtility.SetDirty(slotsParent);
         return mgr;
+    }
+
+    static CustomerQueue WireCustomerQueue(GameObject parent)
+    {
+        var q = parent.GetComponent<CustomerQueue>();
+        if (q == null) q = parent.AddComponent<CustomerQueue>();
+
+        q.startPoint     = parent.transform.Find("StartPoint");
+        q.waitPoint      = parent.transform.Find("WaitPoint");
+        q.exitPoint      = parent.transform.Find("ExitPoint");
+        q.customerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{PfbPath}/Customer.prefab");
+
+        EditorUtility.SetDirty(parent);
+        return q;
     }
 
     static void WireClickManager()

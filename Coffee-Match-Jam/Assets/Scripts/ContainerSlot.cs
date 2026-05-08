@@ -4,11 +4,18 @@ using UnityEngine;
 public class ContainerSlot : MonoBehaviour
 {
     public Container heldContainer { get; private set; }
-    public bool IsEmpty => heldContainer == null;
+    public bool IsReserved { get; private set; }
+
+    public bool IsEmpty     => heldContainer == null;
+    public bool IsAvailable => heldContainer == null && !IsReserved;
+
+    public void Reserve()   => IsReserved = true;
+    public void Unreserve() => IsReserved = false;
 
     public void Place(Container c)
     {
         heldContainer = c;
+        IsReserved    = false;
         c.transform.SetParent(transform);
         c.transform.localPosition = new Vector3(0f, 0.15f, 0f);
         c.transform.localRotation = Quaternion.identity;
@@ -22,5 +29,6 @@ public class ContainerSlot : MonoBehaviour
     public void Clear()
     {
         heldContainer = null;
+        IsReserved    = false;
     }
 }

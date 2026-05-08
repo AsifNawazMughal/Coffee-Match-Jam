@@ -15,6 +15,7 @@ public static class SceneCreator
     // World-space Z positions (larger Z = further from camera = higher on screen)
     const float Z_Water        = 15.0f;
     const float Z_Sand         = 11.5f;
+    const float Z_Customer     =  9.5f;   // single spawn / wait point
     const float Z_SlotsRow     =  8.0f;
     const float Z_Generator    =  7.0f;   // top of each lane
     const float Z_LaneBottom   =  1.0f;   // delivery end (close to camera)
@@ -39,6 +40,7 @@ public static class SceneCreator
         PlaceLighting();
         PlaceCamera();
         PlaceBackground();
+        PlaceCustomerArea();
         PlaceSlotsRow();
         PlaceLanes();
         PlaceGameManager();
@@ -46,6 +48,17 @@ public static class SceneCreator
         EditorSceneManager.MarkAllScenesDirty();
         EditorSceneManager.SaveOpenScenes();
         Debug.Log("Scene ready. Press Play (scripts will be wired next).");
+    }
+
+    // One-shot: run every step in order. Reproduces the saved configuration end-to-end.
+    [MenuItem("Coffee Match/Build Everything")]
+    public static void BuildEverything()
+    {
+        EnvironmentBuilder.BuildAll();
+        BuildScene();
+        SceneWirer.WireScene();
+        UIBuilder.BuildUI();
+        Debug.Log("Build Everything done.");
     }
 
     // ── Clear ──────────────────────────────────────────────────────────────
@@ -97,15 +110,28 @@ public static class SceneCreator
         Plane(bg, "Floor",  new Vector3(0, -0.06f, 4.5f),          new Vector3(3.5f,1,3.5f),"Mat_Ground");
     }
 
+    // ── Customer Area ──────────────────────────────────────────────────────
+    // Three markers: customers spawn at StartPoint, line up toward WaitPoint
+    // (front of queue), and walk off to ExitPoint after being served.
+
+    static void PlaceCustomerArea()
+    {
+        var parent = new GameObject("--- Customer ---");
+        Marker(parent, "WaitPoint",  new Vector3( 0f,  0f, Z_Customer));
+        Marker(parent, "StartPoint", new Vector3( 6f,  0f, Z_Customer));
+        Marker(parent, "ExitPoint",  new Vector3(-7f,  0f, Z_Customer));
+    }
+
     // ── Slots Row ──────────────────────────────────────────────────────────
-    // 7 holding slots between the player strip and the lane generators
+    // 5 holding slots between the customer area and the lane generators.
+    // Matches the current Level.unity layout.
 
     static void PlaceSlotsRow()
     {
         var parent  = new GameObject("--- SlotsRow ---");
         var slotPfb = Pfb("Slot");
 
-        const int   count   = 7;
+        const int   count   = 5;
         const float spacing = 1.25f;
         float startX = -(count - 1) * spacing / 2f;
 

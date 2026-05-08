@@ -23,7 +23,9 @@ public class ClickManager : MonoBehaviour
         if (!Physics.Raycast(ray, out RaycastHit hit, 100f)) return;
 
         var handler = hit.collider.GetComponentInParent<ContainerClickHandler>();
-        if (handler != null && handler.lane != null)
-            handler.lane.OnTopBoxClicked();
+        if (handler == null || handler.lane == null) return;
+
+        if (handler.TryGetComponent<Container>(out var box))
+            handler.lane.OnBoxClicked(box);
     }
 }

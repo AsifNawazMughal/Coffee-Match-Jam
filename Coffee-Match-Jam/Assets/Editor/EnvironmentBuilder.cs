@@ -23,6 +23,7 @@ public static class EnvironmentBuilder
         BuildCupPrefab();
         BuildContainerPrefab("Container_Small", cols: 2, rows: 2, depth: 0.90f);
         BuildContainerPrefab("Container_Large", cols: 2, rows: 3, depth: 1.22f);
+        BuildCustomerPrefab();
         BuildGeneratorPrefab();
         BuildLaneTrackPrefab();
         BuildSlotPrefab();
@@ -174,6 +175,24 @@ public static class EnvironmentBuilder
                      M("Mat_White"));
             }
         }
+
+        Save(root, path);
+    }
+
+    // ── Customer Prefab ────────────────────────────────────────────────────
+    // Lollipop character: capsule body + sphere head, tinted at runtime to match
+    // the colour they want.
+
+    static void BuildCustomerPrefab()
+    {
+        string path = $"{PfbPath}/Customer.prefab";
+        if (Exists(path)) AssetDatabase.DeleteAsset(path);
+
+        var root = new GameObject("Customer");
+        root.AddComponent<Customer>();
+
+        Prim(PrimitiveType.Capsule, "Body", root, new Vector3(0, 0.42f, 0), new Vector3(0.30f, 0.30f, 0.30f), M("Mat_White"));
+        Prim(PrimitiveType.Sphere,  "Head", root, new Vector3(0, 1.00f, 0), new Vector3(0.32f, 0.32f, 0.32f), M("Mat_White"));
 
         Save(root, path);
     }
