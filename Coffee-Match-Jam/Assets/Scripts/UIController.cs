@@ -32,6 +32,9 @@ public class UIController : MonoBehaviour
 
     [Header("Win sequence")]
     public CoinRewardAnimation coinReward;
+    [Tooltip("When true, the Win panel only appears AFTER the coin animation finishes. " +
+             "When false, the panel appears immediately and the GET IT button reveals at the end.")]
+    [SerializeField] bool showPanelAfterAnimation = true;
 
     void Start()
     {
@@ -121,20 +124,34 @@ public class UIController : MonoBehaviour
 
     // ── Internal panel/event handlers ──────────────────────────────────────
 
-    void ShowWin()
-    {
-        SetActiveSafe(winPanel, true);
-        if (winNextButton != null) winNextButton.gameObject.SetActive(false);
-        StartCoroutine(WinSequence());
-    }
+    void ShowWin() => StartCoroutine(WinSequence());
 
     IEnumerator WinSequence()
     {
         var gm = GameManager.Instance;
-        if (coinReward != null && gm != null)
-            yield return coinReward.Play(gm.LevelReward, dy => gm.AddCoins(dy));
 
-        if (winNextButton != null) winNextButton.gameObject.SetActive(true);
+        if (showPanelAfterAnimation)
+        {
+            // Panel hidden during the coin rain; appears once it finishes.
+            SetActiveSafe(winPanel, false);
+
+            if (coinReward != null && gm != null)
+                yield return coinReward.Play(gm.LevelReward, dy => gm.AddCoins(dy));
+
+            SetActiveSafe(winPanel, true);
+            if (winNextButton != null) winNextButton.gameObject.SetActive(true);
+        }
+        else
+        {
+            // Panel visible during the coin rain; only the GET IT button hides until done.
+            SetActiveSafe(winPanel, true);
+            if (winNextButton != null) winNextButton.gameObject.SetActive(false);
+
+            if (coinReward != null && gm != null)
+                yield return coinReward.Play(gm.LevelReward, dy => gm.AddCoins(dy));
+
+            if (winNextButton != null) winNextButton.gameObject.SetActive(true);
+        }
     }
 
     void ShowLose()  => SetActiveSafe(losePanel,  true);

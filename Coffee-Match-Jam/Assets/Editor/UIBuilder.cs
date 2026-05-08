@@ -50,6 +50,11 @@ public static class UIBuilder
         ui.losePanel.SetActive(false);
         ui.pausePanel.SetActive(false);
 
+        BuildCoinRewardAnimation(canvasRT, ui);
+
+        var messageLabel = BuildMessageLabel(canvasRT);
+        var powerUp      = BuildPowerUpBar(canvasRT, messageLabel);
+
         // ── Wire button OnClick handlers (visible in each Button's Inspector) ──
         WireButton(ui.pauseButton,        ui, nameof(UIController.Pause));
         WireButton(ui.winNextButton,      ui, nameof(UIController.Next));
@@ -57,6 +62,9 @@ public static class UIBuilder
         WireButton(ui.pauseResumeButton,  ui, nameof(UIController.Resume));
         WireButton(ui.pauseRestartButton, ui, nameof(UIController.Restart));
         WireButton(ui.pauseHomeButton,    ui, nameof(UIController.Home));
+        WirePowerUp(powerUp.hintButton,    powerUp, nameof(PowerUpController.UseHint));
+        WirePowerUp(powerUp.addTimeButton, powerUp, nameof(PowerUpController.UseAddTime));
+        WirePowerUp(powerUp.undoButton,    powerUp, nameof(PowerUpController.UseUndo));
 
         EnsureEventSystem();
 
@@ -73,22 +81,27 @@ public static class UIBuilder
         var root  = CreatePanelOverlay("WinPanel", parent);
         var frame = AddCenteredImage(root.transform, "Frame", Sprite("won-pannel"), new Vector2(820, 1100));
         ui.winNextButton = AddButton(frame, "NextButton", Sprite("next"), new Vector2(0.5f, 0.10f), new Vector2(0.5f, 0.10f), new Vector2(280, 120));
+        return root;
+    }
 
-        // Coin animation: spawn coins at panel centre, fly to top-bar coin label.
-        var anchor = new GameObject("CoinPileAnchor", typeof(RectTransform));
-        anchor.transform.SetParent(root.transform, false);
-        var ar = anchor.GetComponent<RectTransform>();
-        ar.anchorMin = ar.anchorMax = ar.pivot = new Vector2(0.5f, 0.5f);
-        ar.anchoredPosition = new Vector2(0, 60f);
-        ar.sizeDelta = Vector2.zero;
+    // Coin animation lives on the Canvas root so it can run while the WinPanel is hidden.
+    static void BuildCoinRewardAnimation(RectTransform canvasRT, UIController ui)
+    {
+        var canvasGO = canvasRT.gameObject;
 
-        var anim = root.AddComponent<CoinRewardAnimation>();
-        anim.pileAnchor   = ar;
+        var pileGO = new GameObject("CoinPileAnchor", typeof(RectTransform));
+        pileGO.transform.SetParent(canvasRT, false);
+        var pile = pileGO.GetComponent<RectTransform>();
+        pile.anchorMin = pile.anchorMax = pile.pivot = new Vector2(0.5f, 0.5f);
+        pile.anchoredPosition = new Vector2(0f, 60f);
+        pile.sizeDelta = Vector2.zero;
+
+        var anim = canvasGO.GetComponent<CoinRewardAnimation>();
+        if (anim == null) anim = canvasGO.AddComponent<CoinRewardAnimation>();
+        anim.pileAnchor   = pile;
         anim.targetAnchor = ui.coinLabel != null ? ui.coinLabel.rectTransform : null;
         anim.coinSprite   = CoinIcon();
         ui.coinReward     = anim;
-
-        return root;
     }
 
     static GameObject BuildLosePanel(RectTransform parent, UIController ui)
@@ -240,6 +253,127 @@ public static class UIBuilder
         t.alignment = TextAlignmentOptions.Center;
         t.color = Color.white;
         return t;
+    }
+
+    // ── Power-up bar + message label ───────────────────────────────────────
+
+    static TMP_Text BuildMessageLabel(RectTransform canvasRT)
+    {
+        var go = new GameObject("MessageLabel", typeof(RectTransform));
+        go.transform.SetParent(canvasRT, false);
+        var rt = (RectTransform)go.transform;
+        rt.anchorMin = new Vector2(0f, 0.5f);
+        rt.anchorMax = new Vector2(1f, 0.5f);
+        rt.offsetMin = new Vector2(40f, -50f);
+        rt.offsetMax = new Vector2(-40f, 50f);
+
+        var t = go.AddComponent<TextMeshProUGUI>();
+        t.text = "";
+        t.fontSize = 60;
+        t.alignment = TextAlignmentOptions.Center;
+        t.color = new Color(1f, 1f, 1f, 0f);
+        t.raycastTarget = false;
+        return t;
+    }
+
+    static PowerUpController BuildPowerUpBar(RectTransform canvasRT, TMP_Text messageLabel)
+    {
+        var bar = CreatePanel("PowerUpBar", canvasRT,
+            new Vector2(0f, 0f), new Vector2(1f, 0f),
+            new Vector2(0f, 30f), new Vector2(0f, 260f));
+
+        var hint = BuildPowerUpSlot(bar, "HintButton",  Sprite("hint"),    new Vector2(0.08f, 0f), new Vector2(0.32f, 1f));
+        var time = BuildPowerUpSlot(bar, "TimerButton", Sprite("forward"), new Vector2(0.38f, 0f), new Vector2(0.62f, 1f));
+        var undo = BuildPowerUpSlot(bar, "UndoButton",  Sprite("reverse"), new Vector2(0.68f, 0f), new Vector2(0.92f, 1f));
+
+        var pu = canvasRT.gameObject.AddComponent<PowerUpController>();
+        pu.hintButton       = hint.button;
+        pu.addTimeButton    = time.button;
+        pu.undoButton       = undo.button;
+        pu.hintCostLabel    = hint.cost;
+        pu.addTimeCostLabel = time.cost;
+        pu.undoCostLabel    = undo.cost;
+        pu.messageLabel     = messageLabel;
+        return pu;
+    }
+
+    struct PowerUpSlot { public Button button; public TMP_Text cost; }
+
+    static PowerUpSlot BuildPowerUpSlot(RectTransform parent, string name, Sprite icon, Vector2 anchorMin, Vector2 anchorMax)
+    {
+        var slot = CreatePanel(name, parent, anchorMin, anchorMax, new Vector2(8, 8), new Vector2(-8, -8));
+
+        // Button (top portion)
+        var btnGO = new GameObject("Icon", typeof(RectTransform), typeof(Image), typeof(Button));
+        btnGO.transform.SetParent(slot, false);
+        var brt = (RectTransform)btnGO.transform;
+        brt.anchorMin = new Vector2(0f, 0.30f);
+        brt.anchorMax = new Vector2(1f, 1f);
+        brt.offsetMin = Vector2.zero;
+        brt.offsetMax = Vector2.zero;
+        var img = btnGO.GetComponent<Image>();
+        img.sprite = icon;
+        img.preserveAspect = true;
+        var btn = btnGO.GetComponent<Button>();
+        btn.targetGraphic = img;
+
+        // Cost label (coin icon + number) along the bottom
+        var costGO = new GameObject("Cost", typeof(RectTransform), typeof(Image));
+        costGO.transform.SetParent(slot, false);
+        var crt = (RectTransform)costGO.transform;
+        crt.anchorMin = new Vector2(0.10f, 0f);
+        crt.anchorMax = new Vector2(0.90f, 0.28f);
+        crt.offsetMin = Vector2.zero;
+        crt.offsetMax = Vector2.zero;
+        var costBg = costGO.GetComponent<Image>();
+        costBg.sprite = Sprite("pannel");
+        costBg.type   = Image.Type.Sliced;
+
+        var coinIconGO = new GameObject("Coin", typeof(RectTransform), typeof(Image));
+        coinIconGO.transform.SetParent(costGO.transform, false);
+        var crIcon = (RectTransform)coinIconGO.transform;
+        crIcon.anchorMin = new Vector2(0f, 0.5f);
+        crIcon.anchorMax = new Vector2(0f, 0.5f);
+        crIcon.pivot     = new Vector2(0f, 0.5f);
+        crIcon.anchoredPosition = new Vector2(8f, 0f);
+        crIcon.sizeDelta = new Vector2(48f, 48f);
+        coinIconGO.GetComponent<Image>().sprite = CoinIcon();
+
+        var costLabelGO = new GameObject("Amount", typeof(RectTransform));
+        costLabelGO.transform.SetParent(costGO.transform, false);
+        var clrt = (RectTransform)costLabelGO.transform;
+        clrt.anchorMin = Vector2.zero;
+        clrt.anchorMax = Vector2.one;
+        clrt.offsetMin = new Vector2(60f, 0f);
+        clrt.offsetMax = new Vector2(-8f, 0f);
+        var costText = costLabelGO.AddComponent<TextMeshProUGUI>();
+        costText.text = "10";
+        costText.fontSize = 40;
+        costText.alignment = TextAlignmentOptions.Center;
+        costText.color = Color.white;
+
+        return new PowerUpSlot { button = btn, cost = costText };
+    }
+
+    public static void WirePowerUp(Button button, PowerUpController target, string methodName)
+    {
+        if (button == null || target == null || string.IsNullOrEmpty(methodName)) return;
+
+        int n = button.onClick.GetPersistentEventCount();
+        for (int i = 0; i < n; i++)
+        {
+            if (button.onClick.GetPersistentTarget(i) == target &&
+                button.onClick.GetPersistentMethodName(i) == methodName)
+                return;
+        }
+
+        var method = typeof(PowerUpController).GetMethod(methodName);
+        if (method == null) { Debug.LogWarning($"UIBuilder: PowerUpController.{methodName} not found"); return; }
+
+        UnityEngine.Events.UnityAction call =
+            (UnityEngine.Events.UnityAction)System.Delegate.CreateDelegate(typeof(UnityEngine.Events.UnityAction), target, method);
+        UnityEditor.Events.UnityEventTools.AddPersistentListener(button.onClick, call);
+        EditorUtility.SetDirty(button);
     }
 
     static Button AddButton(RectTransform parent, string name, Sprite sprite, Vector2 anchorMin, Vector2 anchorMax, Vector2 size)

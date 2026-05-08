@@ -41,8 +41,9 @@ public class LaneController : MonoBehaviour
     Vector3 laneDir = Vector3.forward;
     float   trackLength;
 
-    public int  BoxCount => stack.Count;
-    public bool HasBoxes => stack.Count > 0;
+    public int       BoxCount => stack.Count;
+    public bool      HasBoxes => stack.Count > 0;
+    public Container FrontBox => stack.Count > 0 ? stack[0] : null;
 
     int VisibleCap
     {
@@ -227,9 +228,49 @@ public class LaneController : MonoBehaviour
         if (col != null) col.enabled = false;
 
         top.transform.SetParent(null);
-        slotRow.AcceptContainer(top);
+        var chosenSlot = slotRow.AcceptContainer(top);
+        if (chosenSlot != null && gm != null)
+            gm.RecordMove(this, top, chosenSlot);
 
         ShiftBoxesForward();
+    }
+
+    // Inserts a previously-removed box back at the front of the lane (used
+    // by the Undo power-up). Boxes already on the lane shift back; the
+    // re-inserted box becomes the open top.
+    public void InsertAtFront(Container box)
+    {
+        if (box == null) return;
+
+        // Close whatever was the front before insertion.
+        if (stack.Count > 0 && stack[0] != null)
+            stack[0].SetClosedImmediate();
+
+        box.transform.SetParent(transform, true);
+
+        var handler = box.GetComponent<ContainerClickHandler>();
+        if (handler != null) handler.lane = this;
+        var col = box.GetComponent<Collider>();
+        if (col != null) col.enabled = true;
+
+        stack.Insert(0, box);
+
+        busy = true;
+        var seq = DOTween.Sequence();
+        for (int i = 0; i < stack.Count; i++)
+        {
+            var b = stack[i];
+            if (b == null) continue;
+            Vector3 target = i < VisibleCap ? GetOnLanePosition(i) : SpawnPos;
+            seq.Join(b.transform.DOMove(target, shiftDuration).SetEase(Ease.OutQuad));
+        }
+        seq.OnComplete(() =>
+        {
+            busy = false;
+            // The re-inserted box at index 0 already has its lid open; calling
+            // Open() again is a no-op.
+            OpenTop();
+        });
     }
 
     void ShiftBoxesForward()

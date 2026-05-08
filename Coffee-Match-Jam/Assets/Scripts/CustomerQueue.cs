@@ -44,10 +44,11 @@ public class CustomerQueue : MonoBehaviour
     int totalToSpawn;
     float deadlockTimer;
 
-    public int  ServedCount    => servedSoFar;
-    public int  SpawnedCount   => spawnedSoFar;
-    public int  QueueOccupancy => queue.Count;
-    public bool IsQueueFull    => queue.Count >= queueLength;
+    public int      ServedCount    => servedSoFar;
+    public int      SpawnedCount   => spawnedSoFar;
+    public int      QueueOccupancy => queue.Count;
+    public bool     IsQueueFull    => queue.Count >= queueLength;
+    public Customer FrontCustomer  => queue.Count > 0 ? queue[0] : null;
 
     public event Action OnAllServed;
     public event Action OnDeadlock;

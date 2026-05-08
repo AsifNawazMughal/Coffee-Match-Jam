@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class GameManager : MonoBehaviour
@@ -51,6 +52,14 @@ public class GameManager : MonoBehaviour
     public event Action        OnPaused;
     public event Action        OnResumed;
 
+    struct Move
+    {
+        public LaneController lane;
+        public Container box;
+        public ContainerSlot slot;
+    }
+    readonly Stack<Move> moveHistory = new();
+
     void Awake() => Instance = this;
 
     void Start()
@@ -91,8 +100,63 @@ public class GameManager : MonoBehaviour
     public void AddCoins(int amount)
     {
         if (amount == 0) return;
-        Coins += amount;
+        Coins = Mathf.Max(0, Coins + amount);
         OnCoinsChanged?.Invoke(Coins);
+    }
+
+    public bool SpendCoins(int amount)
+    {
+        if (amount <= 0) return true;
+        if (Coins < amount) return false;
+        Coins -= amount;
+        OnCoinsChanged?.Invoke(Coins);
+        return true;
+    }
+
+    public void AddTime(float seconds)
+    {
+        if (!LevelActive || seconds == 0f) return;
+        TimeRemaining += seconds;
+        OnTimerTick?.Invoke(TimeRemaining);
+    }
+
+    public void RecordMove(LaneController lane, Container box, ContainerSlot slot)
+    {
+        if (lane == null || box == null || slot == null) return;
+        moveHistory.Push(new Move { lane = lane, box = box, slot = slot });
+    }
+
+    // True if at least one move on the history can still be undone (the box
+    // hasn't been taken by a customer). Used by PowerUpController to decide
+    // whether to consume a charge before calling UndoLastMove.
+    public bool UndoLastMoveDryRun()
+    {
+        foreach (var m in moveHistory)
+        {
+            if (m.box == null || m.lane == null || m.slot == null) continue;
+            if (m.slot.heldContainer != m.box) continue;
+            return true;
+        }
+        return false;
+    }
+
+    // Pops history until a valid move is found and reverses it: the box leaves
+    // the slot and re-enters the lane at the front. Returns false if no
+    // recoverable move exists (e.g. the box was already taken by a customer).
+    public bool UndoLastMove()
+    {
+        while (moveHistory.Count > 0)
+        {
+            var m = moveHistory.Pop();
+            if (m.box == null || m.lane == null || m.slot == null) continue;
+            if (m.slot.heldContainer != m.box) continue;
+
+            m.slot.Clear();
+            m.lane.InsertAtFront(m.box);
+            if (customerQueue != null) customerQueue.OnSlotsChanged();
+            return true;
+        }
+        return false;
     }
 
     public void Pause()

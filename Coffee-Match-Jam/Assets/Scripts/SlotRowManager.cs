@@ -31,17 +31,18 @@ public class SlotRowManager : MonoBehaviour
         }
     }
 
-    public void AcceptContainer(Container c)
+    public ContainerSlot AcceptContainer(Container c)
     {
         foreach (var slot in slots)
         {
             if (slot == null || !slot.IsAvailable) continue;
             slot.Reserve();
             FlyToSlot(c, slot);
-            return;
+            return slot;
         }
         Debug.LogWarning("No empty slot — container dropped.");
         Object.Destroy(c.gameObject);
+        return null;
     }
 
     void FlyToSlot(Container c, ContainerSlot slot)
